@@ -1,6 +1,6 @@
-# todo-front — Pipeline CI/CD avec GitLab
+# todo-front — Pipeline CI/CD avec GitHub Actions
 
-> Application React de gestion de tâches déployée via une pipeline CI/CD complète sur GitLab.
+> Application React de gestion de tâches déployée via une pipeline CI/CD complète sur GitHub Actions.
 
 ---
 
@@ -13,15 +13,16 @@
 - [Pipeline CI/CD](#pipeline-cicd)
 - [Variables d'environnement](#variables-denvironnement)
 - [Lancer le projet en local](#lancer-le-projet-en-local)
+- [Différence CI vs CD](#différence-ci-vs-cd)
 - [Auteur](#auteur)
 
 ---
 
 ## Présentation du projet
 
-Ce projet est une application **React** de gestion de tâches (Todo App). Il a été conçu dans le cadre d'un TP DevOps pour mettre en place une **pipeline CI/CD complète** avec GitLab CI.
+Ce projet est une application **React** de gestion de tâches (Todo App). Il a été conçu dans le cadre d'un TP DevOps pour mettre en place une **pipeline CI/CD complète** avec GitHub Actions.
 
-L'objectif principal est la mise en place de l'automatisation du build, des tests et du déploiement via **GitLab CI/CD** et **Docker Hub**.
+L'objectif principal est la mise en place de l'automatisation du build, des tests et du déploiement via **GitHub Actions** et **Docker Hub**.
 
 ---
 
@@ -31,7 +32,7 @@ L'objectif principal est la mise en place de l'automatisation du build, des test
 |-------------|------|
 | **React** | Framework front-end |
 | **npm** | Gestionnaire de paquets |
-| **GitLab CI/CD** | Pipeline d'intégration et de déploiement continus |
+| **GitHub Actions** | Pipeline d'intégration et de déploiement continus |
 | **Docker** | Conteneurisation de l'application |
 | **Docker Hub** | Registry pour stocker l'image Docker |
 | **Nginx** | Serveur web pour servir l'application en production |
@@ -42,84 +43,127 @@ L'objectif principal est la mise en place de l'automatisation du build, des test
 
 ```
 todo-front/
-├── .gitlab-ci.yml      # Configuration de la pipeline CI/CD
-├── Dockerfile          # Image Docker multi-stage (build + serve)
-├── nginx.conf          # Configuration du serveur Nginx
-├── public/             # Fichiers statiques publics
-├── src/                # Code source React
+├── .github/
+│   └── workflows/
+│       └── ci.yml          # Configuration GitHub Actions
+├── Dockerfile               # Image Docker multi-stage (build + serve)
+├── nginx.conf               # Configuration du serveur Nginx
+├── public/                  # Fichiers statiques publics
+├── src/                     # Code source React
 │   ├── App.js
 │   ├── App.test.js
 │   └── index.js
-├── package.json        # Dépendances npm
-└── README.md           # Documentation du projet
+├── package.json             # Dépendances npm
+└── README.md                # Documentation du projet
 ```
+
+
 
 ## Pipeline CI/CD
 
-La pipeline est définie dans le fichier `.gitlab-ci.yml` et se compose de **3 stages**.
+La pipeline est définie dans `.github/workflows/ci.yml` et se compose de **3 jobs**.
 
 ```
-push → [build] → [test] → [deploy ▶ manuel]
+push → [Build job] → [Test job] → [Deploy job]
 ```
 
-### Stage 1 — Build
-- Installe les dépendances avec `npm install`
-- Compile l'application React avec `npm run build`
-- Sauvegarde le dossier `artifact/` pour les stages suivants
+### Job 1 — Build
+- Checkout du code source
+- Installation de Node.js 18
+- Installation des dépendances avec `npm install`
+- Build de l'application React avec `npm run build`
+- Upload de l'artifact `package-final` (dossier `build/`)
 
-### Stage 2 — Test
-- Exécute les tests unitaires avec `npm test`
-- Configuré en `allow_failure: true` : ne bloque pas le pipeline
-- Timeout fixé à **15 minutes**
+### Job 2 — Test
+- Dépend du job `build` (`needs: build`)
+- Installation des dépendances
+- Exécution des tests unitaires avec `npm test`
+- `continue-on-error: true` : ne bloque pas le pipeline
 
-### Stage 3 — Deploy (manuel)
-- Build une image Docker via le `Dockerfile`
-- Se connecte à **Docker Hub** avec les variables sécurisées
-- Pousse l'image : `DOCKER_HUB_USER/todo-front:latest`
-- Déclenchement **manuel** via le bouton ▶️ dans GitLab
+### Job 3 — Deploy
+- Dépend des jobs `build` et `check-tests` (`needs: [build, check-tests]`)
+- Download de l'artifact généré par le job build
+- Build de l'image Docker via le `Dockerfile`
+- Connexion à Docker Hub avec les secrets sécurisés
+- Push de l'image : `DOCKER_HUB_USER/todo-front:latest`
 
-### Fichier `.gitlab-ci.yml`
+### Fichier `.github/workflows/ci.yml`
 
 ```yaml
-stages:
-  - build
-  - test
-  - deploy
+name: Build and Deploy Image
 
-image: node:18-alpine
+on: [push]
 
-build job:
-  stage: build
-  cache:
-    paths:
-      - node_modules/
-  script:
-    - npm install --force
-    - npm run build
-    - mkdir -p artifact
-    - mv build/* artifact/
-  artifacts:
-    paths:
-      - artifact/
+jobs:
+  build:
+    name: Build job
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm install --force
+      - name: Build React app
+        run: npm run build
+      - name: Create directory for uploading artifacts
+        run: mkdir staging && cp -r build/* staging
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-final
+          path: staging
+          if-no-files-found: error
+          retention-days: 5
+      - name: Show uploaded artifacts
+        run: ls staging/
+      - run: echo "🍏 This job's status is ${{ job.status }}."
 
-unit test job:
-  stage: test
-  timeout: 15m
-  script:
-    - npm install --force
-    - npm test -- --watchAll=false --passWithNoTests
-  allow_failure: true
+  check-tests:
+    name: Test job
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm install --force
+      - name: Run unit tests
+        run: npm test -- --watchAll=false --passWithNoTests
+        continue-on-error: true
+      - run: echo "🍏 This job's status is ${{ job.status }}."
 
-deploy job:
-  stage: deploy
-  image: docker:latest
-  services:
-    - docker:dind
-  script:
-    - docker build -t $DOCKER_HUB_USER/todo-front:latest .
-    - docker login -u $DOCKER_HUB_USER -p $DOCKER_HUB_TOKEN
-    - docker push $DOCKER_HUB_USER/todo-front:latest
-  when: manual
+  deploy:
+    name: Deploy job
+    needs: [build, check-tests]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Download artifact from build job
+        uses: actions/download-artifact@v4
+        with:
+          name: package-final
+      - name: Show downloaded artifacts directory
+        run: pwd && ls .
+      - name: Build Docker image
+        run: docker build --no-cache -t ${{ secrets.DOCKER_HUB_USER }}/todo-front:latest .
+      - name: Show Docker images
+        run: docker image ls
+      - name: Login to Docker Hub
+        run: docker login -u ${{ secrets.DOCKER_HUB_USER }} -p ${{ secrets.DOCKER_HUB_TOKEN }}
+      - name: Push image to Docker Hub
+        run: docker push ${{ secrets.DOCKER_HUB_USER }}/todo-front:latest
+      - run: echo "🍏 This job's status is ${{ job.status }}."
 ```
 
 ---
@@ -144,76 +188,83 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
 ```
-### Créer un token Docker Hub
-
-Avant de configurer GitLab, il faut créer un token d'accès sur **Docker Hub** avec les permissions **Read & Write** pour permettre à GitLab de pusher les images.
-
-![Création du token Docker Hub](captures/creation_du_docker_token.png)
-
 
 ---
+
 ## Variables d'environnement
 
-| Variable | Description | Visibilité |
-|----------|-------------|------------|
-| `DOCKER_HUB_USER` | Pseudo Docker Hub | Masked |
-| `DOCKER_HUB_TOKEN` | Token d'accès Docker Hub (Read & Write) | Masked and hidden |
+Les secrets sont stockés dans **Settings → Secrets and variables → Actions** du repo GitHub.
+
+| Secret | Description |
+|--------|-------------|
+| `DOCKER_HUB_USER` | Pseudo Docker Hub |
+| `DOCKER_HUB_TOKEN` | Token d'accès Docker Hub (Read & Write) |
 
 ---
 
-### Ajouter les variables CI/CD dans GitLab
+### Ajouter les secrets dans GitHub
 
-Les variables `DOCKER_HUB_USER` et `DOCKER_HUB_TOKEN` sont ajoutées dans **Settings → CI/CD → Variables** pour sécuriser les credentials Docker Hub.
+Les secrets `DOCKER_HUB_USER` et `DOCKER_HUB_TOKEN` sont ajoutés dans **Settings → Secrets and variables → Actions → New repository secret**.
 
-**Variable DOCKER_HUB_USER :**
+**Secret DOCKER_HUB_USER :**
 
-![Variable DOCKER_HUB_USER](captures/variables1.png)
+![Secret DOCKER_HUB_USER](captures/variables1.png)
 
-**Variable DOCKER_HUB_TOKEN :**
+**Secret DOCKER_HUB_TOKEN :**
 
-![Variable DOCKER_HUB_TOKEN](captures/variables2.png)
+![Secret DOCKER_HUB_TOKEN](captures/variables2.png)
+
+**Vue des secrets configurés :**
+
+![Secrets configurés](captures/variables.png)
 
 ---
-
 ### Initialiser le dépôt Git et faire le premier commit
 
-Initialisation du dépôt Git local, ajout de tous les fichiers et création du premier commit.
+Initialisation du dépôt Git local, ajout de tous les fichiers du projet.
 
 ![git init et git add](captures/git1.png)
 
 ---
 
-### Lier le dépôt GitLab et pusher
+### Commit du projet avec le fichier GitHub Actions
 
-Configuration du remote GitLab avec le token d'accès inclus dans l'URL, puis push du code sur la branche `main`.
+Création du commit incluant le fichier `.github/workflows/ci.yml`.
 
-![git remote set-url et git push](captures/git2.png)
-
----
-
-### Étape 5 — Pipeline CI/CD exécutée avec succès
-
-La pipeline tourne automatiquement à chaque push. Les 3 stages sont visibles et passent au vert.
-
-![Vue des pipelines](captures/pipelines.png)
+![git commit](captures/git2.png)
 
 ---
 
-### Étape 6 — Détail des jobs
+### Lier le dépôt GitHub et pusher
 
-Chaque job est exécuté dans l'ordre : `build job` → `unit test job` → `deploy job` (manuel).
+Configuration du remote GitHub puis push du code sur la branche `main`.
+
+![git remote set-url et git push](captures/git3.png)
+
+---
+
+### Pipeline exécutée avec succès
+
+La pipeline se déclenche automatiquement à chaque push. Les 3 jobs s'enchaînent et passent au vert en **1m 43s**.
+
+![Vue du workflow](captures/workflow.png)
+
+---
+
+### Détail des jobs
+
+Chaque job s'exécute dans l'ordre : `Build job` → `Test job` → `Deploy job`.
 
 ![Détail des jobs](captures/job.png)
 
 ---
 
-
 ## Lancer le projet en local
 
 ```bash
 # Cloner le projet
-git clone https://gitlab.com/mary_bdj/gitlab_ci_m2gl.git
-cd gitlab_ci_m2gl
+git clone https://github.com/marie-badji/github_action.git
+cd github_action
 
 # Installer les dépendances
 npm install
@@ -231,7 +282,28 @@ docker run -p 80:80 todo-front
 
 ---
 
+## Différence CI vs CD
+
+| Concept | Description | Dans ce projet |
+|---------|-------------|----------------|
+| **CI** (Intégration Continue) | Build et tests automatiques à chaque push | Jobs `build` et `check-tests` |
+| **CD** (Livraison Continue) | Image Docker prête sur Docker Hub | Job `deploy` |
+| **CD** (Déploiement Continu) | Déploiement automatique sur un serveur | Non configuré (hors scope du TP) |
+
+---
+
+## Différence GitLab CI vs GitHub Actions
+
+| | **GitLab CI** | **GitHub Actions** |
+|---|---|---|
+| Fichier | `.gitlab-ci.yml` | `.github/workflows/ci.yml` |
+| Syntaxe | `stages`, `script:` | `jobs`, `steps:` |
+| Secrets | Variables CI/CD | Secrets Actions |
+| Deploy | `when: manual` | Automatique après les jobs précédents |
+
+---
+
 ## Auteur
 
 **Marie BADJI** — M2GL DevOps  
-Dépôt GitLab : [gitlab.com/mary_bdj/gitlab_ci_m2gl](https://gitlab.com/mary_bdj/gitlab_ci_m2gl)
+Dépôt GitHub : [github.com/marie-badji/github_action](https://github.com/marie-badji/github_action)
