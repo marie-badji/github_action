@@ -206,13 +206,6 @@ Les secrets sont stockés dans **Settings → Secrets and variables → Actions*
 
 Les secrets `DOCKER_HUB_USER` et `DOCKER_HUB_TOKEN` sont ajoutés dans **Settings → Secrets and variables → Actions → New repository secret**.
 
-**Secret DOCKER_HUB_USER :**
-
-![Secret DOCKER_HUB_USER](captures/variables1.png)
-
-**Secret DOCKER_HUB_TOKEN :**
-
-![Secret DOCKER_HUB_TOKEN](captures/variables2.png)
 
 **Vue des secrets configurés :**
 
