@@ -5,18 +5,13 @@ stages:
 
 image: node:18-alpine
 
-# ────────────────────────────────────────────
-# STAGE 1 — Build du projet React
-# ────────────────────────────────────────────
 build job:
   stage: build
   cache:
     paths:
       - node_modules/
   script:
-    - echo " Installation des dépendances..."
     - npm install --force
-    - echo " Build de l'application React..."
     - npm run build
     - mkdir -p artifact
     - mv build/* artifact/
@@ -24,22 +19,14 @@ build job:
     paths:
       - artifact/
 
-# ────────────────────────────────────────────
-# STAGE 2 — Tests unitaires
-# ────────────────────────────────────────────
 unit test job:
   stage: test
   timeout: 15m
   script:
-    - echo " Installation des dépendances pour les tests..."
     - npm install --force
-    - echo " Lancement des tests..."
     - npm test -- --watchAll=false --passWithNoTests
   allow_failure: true
 
-# ────────────────────────────────────────────
-# STAGE 3 — Build & Push image Docker (manuel)
-# ────────────────────────────────────────────
 deploy job:
   stage: deploy
   image: docker:latest
