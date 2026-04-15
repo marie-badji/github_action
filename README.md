@@ -121,7 +121,7 @@ jobs:
           retention-days: 5
       - name: Show uploaded artifacts
         run: ls staging/
-      - run: echo "🍏 This job's status is ${{ job.status }}."
+      - run: echo " This job's status is ${{ job.status }}."
 
   check-tests:
     name: Test job
@@ -140,7 +140,7 @@ jobs:
       - name: Run unit tests
         run: npm test -- --watchAll=false --passWithNoTests
         continue-on-error: true
-      - run: echo "🍏 This job's status is ${{ job.status }}."
+      - run: echo " This job's status is ${{ job.status }}."
 
   deploy:
     name: Deploy job
@@ -163,7 +163,7 @@ jobs:
         run: docker login -u ${{ secrets.DOCKER_HUB_USER }} -p ${{ secrets.DOCKER_HUB_TOKEN }}
       - name: Push image to Docker Hub
         run: docker push ${{ secrets.DOCKER_HUB_USER }}/todo-front:latest
-      - run: echo "🍏 This job's status is ${{ job.status }}."
+      - run: echo " This job's status is ${{ job.status }}."
 ```
 
 ---
